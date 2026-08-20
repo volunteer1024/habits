@@ -6,16 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAGES: 'true'
@@ -33,34 +31,9 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+      - name: Publish dist to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Use GitHub Actions as Pages source
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo
-            const body = { owner, repo, build_type: 'workflow' }
-            try {
-              await github.request('GET /repos/{owner}/{repo}/pages', { owner, repo })
-              await github.request('PUT /repos/{owner}/{repo}/pages', body)
-            } catch (error) {
-              if (error.status === 404) {
-                await github.request('POST /repos/{owner}/{repo}/pages', body)
-                return
-              }
-              throw error
-            }
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
