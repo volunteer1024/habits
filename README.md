@@ -13,6 +13,14 @@ npm run dev
 
 打开提示的本地地址。手机和电脑浏览器均可使用。
 
+## 在线访问
+
+推送到 `main` 会自动跑 GitHub Actions：测试、构建，并发布到 GitHub Pages。
+
+站点地址：https://volunteer1024.github.io/habits/
+
+如果第一次部署失败，到仓库 **Settings → Pages → Build and deployment**，把 Source 设为 **GitHub Actions** 后再推一次或手动跑 `Deploy GitHub Pages`。
+
 ## 常用命令
 
 ```bash

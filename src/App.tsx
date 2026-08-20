@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from '@/app/app-context'
+import { routerBasename } from '@/lib/router-base'
 import { AppShell } from '@/components/layout/app-shell'
 import { Toaster } from '@/components/ui/sonner'
 import { TodayPage } from '@/pages/today-page'
@@ -13,7 +14,7 @@ import { HabitSettingsPage } from '@/pages/habit-settings-page'
 export default function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename()}>
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<Navigate to="/today" replace />} />
