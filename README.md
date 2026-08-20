@@ -15,16 +15,15 @@ npm run dev
 
 ## 在线访问
 
-推送到 `main` 会自动跑 GitHub Actions：测试、构建，并把 `dist` 推到 `gh-pages` 分支。
+推送到 `main` 会自动跑 GitHub Actions：测试、构建，并用 **GitHub Actions** 发布 `dist`。
 
 站点地址：https://volunteer1024.github.io/habits/
 
-Pages 设置保持 **Deploy from a branch**，把 Branch 改成：
+Pages 设置请使用：
 
-- Branch：`gh-pages`
-- Folder：`/ (root)`
+- **Source：** GitHub Actions
 
-第一次部署成功、出现 `gh-pages` 分支后再改这项。不要选 `main` 的 `/(root)`，那会把源码当网站发布。
+不要选 Deploy from a branch 的 `main` / `(root)`，那会把源码当网站发布。
 
 ## 常用命令
 
