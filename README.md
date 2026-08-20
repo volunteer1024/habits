@@ -19,7 +19,7 @@ npm run dev
 
 站点地址：https://volunteer1024.github.io/habits/
 
-如果第一次部署失败，到仓库 **Settings → Pages → Build and deployment**，把 Source 设为 **GitHub Actions** 后再推一次或手动跑 `Deploy GitHub Pages`。
+推送到 `main` 时，工作流会把 Pages 源切到 GitHub Actions，再发布 `dist`。如果部署权限被仓库环境保护拦住，到 **Settings → Environments → github-pages** 允许这次部署即可。
 
 ## 常用命令
 
