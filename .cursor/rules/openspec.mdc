@@ -1,0 +1,17 @@
+---
+description: Route new product requirements through OpenSpec propose, apply, and archive
+alwaysApply: true
+---
+
+# OpenSpec
+
+New features, behavior changes, and product requirements use OpenSpec. Do not start by editing app code.
+
+1. Scope is unclear → `/opsx-explore`
+2. Change is known → `/opsx-propose <idea>` (planning artifacts only)
+3. After the user reviews artifacts → `/opsx-apply`
+4. After implementation is done → `/opsx-archive`, syncing delta specs into `openspec/specs/`
+
+Skip this loop only for typos, dependency bumps, and refactors with no behavior change.
+
+Shipped behavior lives in `openspec/specs/`. Change history lives in `openspec/changes/archive/`. `docs/prd-v0.1.md` and `docs/architecture.md` are background, not the source of truth.

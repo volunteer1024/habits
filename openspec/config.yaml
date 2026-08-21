@@ -1,0 +1,49 @@
+schema: spec-driven
+
+# Shown to AI when creating artifacts.
+context: |
+  Product: Habits — personal task check-in, points, bad-habit penalties, and rewards.
+  User: 孤笑. No login. Data stays in the browser.
+
+  Stack: React 19, TypeScript, Vite, React Router, Tailwind CSS v4, shadcn/ui, Vitest.
+  Layers: pages/components → services → repositories → AppStore + StorageAdapter.
+  Persistence: LocalStorage key `checkin:v1`. UI never reads localStorage directly.
+  AppStore.update clones state before write so React snapshots stay immutable.
+
+  Domain:
+  - Tasks: scheduled check-ins, locked points on complete, optional monthly perfect bonus
+  - Bad habits: recorded penalties that can be undone today
+  - Rewards: redeem against point balance
+  - Stats calendar: completion marks plus daily net points
+
+  UI: mobile tab bar, desktop sidebar, content max-width 720px.
+  Complete state is muted blue. Incomplete must not use warning colors.
+  Forms use Sheet; recording a bad habit uses a bottom Drawer.
+
+  Commits: conventional commits (feat/fix/chore/refactor/test/docs/ci).
+  Language: write OpenSpec artifacts in Chinese unless the user wrote the request in English.
+  Existing docs: docs/prd-v0.1.md and docs/architecture.md are background only.
+  Do not bulk-convert them. Grow openspec/specs from real archived changes.
+
+rules:
+  proposal:
+    - Keep proposals under 500 words
+    - Always include a Non-goals section
+    - Write in Chinese unless the request is in English
+  specs:
+    - Describe observable behavior, not implementation
+    - Scope the delta to this change only
+  tasks:
+    - Prefer small, independently verifiable steps
+    - Cover domain and service behavior with Vitest
+
+operations:
+  apply:
+    guidance:
+      - Follow existing service and repository patterns
+      - Do not let UI touch localStorage
+  archive:
+    guidance:
+      - Default to syncing delta specs into openspec/specs before archiving
+      - Treat openspec/changes/archive as the canonical record of shipped changes
+      - Summarize which main specs were updated
