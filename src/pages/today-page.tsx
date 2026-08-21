@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
@@ -14,7 +14,26 @@ import { useApp } from '@/hooks/use-app'
 import { formatChineseDate } from '@/domain/dates'
 import { formatBalance, formatDelta } from '@/lib/format'
 import { AppError } from '@/domain/errors'
+import type { BadHabitLog } from '@/domain/types'
 import type { TodayItem } from '@/services/domain-services'
+
+function groupTodayHabitLogs(logs: BadHabitLog[]) {
+  const map = new Map<
+    string,
+    { habitId: string; name: string; count: number; penalty: number; latestLogId: string }
+  >()
+  for (const log of logs) {
+    const current = map.get(log.habitId)
+    map.set(log.habitId, {
+      habitId: log.habitId,
+      name: log.habitNameSnapshot,
+      count: (current?.count ?? 0) + 1,
+      penalty: (current?.penalty ?? 0) + log.penaltySnapshot,
+      latestLogId: log.id,
+    })
+  }
+  return [...map.values()]
+}
 
 export function TodayPage() {
   const app = useApp()
@@ -23,28 +42,11 @@ export function TodayPage() {
   const today = app.clock.today()
   const habits = app.state.habits.filter((habit) => habit.status === 'active')
   const logs = app.habits.logsForDate(today)
+  const groupedLogs = groupTodayHabitLogs(logs)
 
   useEffect(() => {
     void app.tasks.getTodayItems().then(setItems)
   }, [app.tasks, app.state.taskInstances, app.state.tasks])
-
-  const groupedLogs = useMemo(() => {
-    const map = new Map<
-      string,
-      { habitId: string; name: string; count: number; penalty: number; latestLogId: string }
-    >()
-    for (const log of logs) {
-      const current = map.get(log.habitId)
-      map.set(log.habitId, {
-        habitId: log.habitId,
-        name: log.habitNameSnapshot,
-        count: (current?.count ?? 0) + 1,
-        penalty: (current?.penalty ?? 0) + log.penaltySnapshot,
-        latestLogId: log.id,
-      })
-    }
-    return [...map.values()]
-  }, [logs])
 
   async function toggle(item: TodayItem) {
     try {
