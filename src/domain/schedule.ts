@@ -98,6 +98,7 @@ function toUuidV4(bytes: Uint8Array): string {
 
 export function createId(): string {
   const webCrypto = globalThis.crypto
+  // randomUUID is secure-context only; HTTP on a LAN IP still has getRandomValues.
   if (typeof webCrypto?.randomUUID === 'function') {
     return webCrypto.randomUUID()
   }

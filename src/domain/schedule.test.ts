@@ -133,4 +133,18 @@ describe('createId', () => {
       expect(createId()).not.toBe(createId())
     })
   })
+
+  it('sets rfc 4122 version and variant bits from getRandomValues', () => {
+    withCrypto(
+      {
+        getRandomValues(bytes: Uint8Array) {
+          bytes.fill(0)
+          return bytes
+        },
+      },
+      () => {
+        expect(createId()).toBe('00000000-0000-4000-8000-000000000000')
+      },
+    )
+  })
 })
