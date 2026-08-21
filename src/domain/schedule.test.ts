@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { isScheduledOn, scheduledDates } from './schedule'
+import { createId, isScheduledOn, scheduledDates } from './schedule'
 import type { Task } from './types'
+
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function withCrypto<T>(value: object, run: () => T): T {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value,
+  })
+  try {
+    return run()
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor)
+  }
+}
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -102,5 +118,19 @@ describe('schedule', () => {
     })
     expect(isScheduledOn(task, '2026-08-24')).toBe(true)
     expect(isScheduledOn(task, '2026-08-25')).toBe(false)
+  })
+})
+
+describe('createId', () => {
+  it('returns a uuid v4', () => {
+    expect(createId()).toMatch(UUID_V4)
+  })
+
+  it('still returns a uuid v4 when randomUUID is unavailable', () => {
+    const webCrypto = globalThis.crypto
+    withCrypto({ getRandomValues: webCrypto.getRandomValues.bind(webCrypto) }, () => {
+      expect(createId()).toMatch(UUID_V4)
+      expect(createId()).not.toBe(createId())
+    })
   })
 })
