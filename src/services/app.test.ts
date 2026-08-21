@@ -229,6 +229,23 @@ describe('app services', () => {
     expect(days.find((day) => day.date === '2026-08-03')?.marked).toBe(false)
   })
 
+  it('sums net points on each calendar day', async () => {
+    const { app } = await setup('2026-08-21')
+    const vocab = taskByName(app, '背单词')
+    const medicine = taskByName(app, '喝药')
+    const tea = habitByName(app, '喝奶茶')
+    await app.tasks.complete(vocab.id)
+    await app.tasks.complete(medicine.id)
+    await app.habits.record(tea.id)
+
+    const days = app.stats.calendarDays('2026-08')
+    expect(days.find((day) => day.date === '2026-08-21')?.points).toBe(-4)
+    expect(days.find((day) => day.date === '2026-08-20')?.points).toBe(0)
+
+    const vocabDays = app.stats.calendarDays('2026-08', vocab.id)
+    expect(vocabDays.find((day) => day.date === '2026-08-21')?.points).toBe(5)
+  })
+
   it('awards a monthly perfect bonus once via lazy settlement', async () => {
     const adapter = new MemoryStorageAdapter()
     const september = createApp(adapter, fixedClock('2026-09-01'))

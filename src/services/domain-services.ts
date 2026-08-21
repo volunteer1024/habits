@@ -518,6 +518,7 @@ export interface CalendarDay {
   inMonth: boolean
   marked: boolean
   scheduled: boolean
+  points: number
 }
 
 function completedSet(instances: TaskInstance[], taskId: string): Set<string> {
@@ -526,6 +527,18 @@ function completedSet(instances: TaskInstance[], taskId: string): Set<string> {
       .filter((item) => item.taskId === taskId && item.status === 'completed')
       .map((item) => item.businessDate),
   )
+}
+
+function transactionMatchesTask(
+  tx: PointTransaction,
+  taskId: string,
+  instanceTaskId: Map<string, string>,
+): boolean {
+  if (tx.type === 'monthly_bonus') return tx.sourceId.startsWith(`${taskId}:`)
+  if (tx.type === 'task_complete' || tx.type === 'task_undo') {
+    return instanceTaskId.get(tx.sourceId) === taskId
+  }
+  return false
 }
 
 export function isEligibleForMonthlyBonus(task: Task, ym: string): boolean {
@@ -584,9 +597,18 @@ export class StatsService {
 
   calendarDays(ym: string, filter: string | 'all' = 'all'): CalendarDay[] {
     const state = this.store.getSnapshot()
+    const instanceTaskId = new Map(
+      state.taskInstances.map((item) => [item.id, item.taskId] as const),
+    )
+    const pointsByDate = new Map<string, number>()
+    for (const tx of state.pointTransactions) {
+      if (filter !== 'all' && !transactionMatchesTask(tx, filter, instanceTaskId)) continue
+      pointsByDate.set(tx.businessDate, (pointsByDate.get(tx.businessDate) ?? 0) + tx.delta)
+    }
     return calendarGrid(ym).map((cell) => {
+      const points = cell.inMonth ? (pointsByDate.get(cell.date) ?? 0) : 0
       if (!cell.inMonth) {
-        return { ...cell, marked: false, scheduled: false }
+        return { ...cell, marked: false, scheduled: false, points }
       }
       if (filter === 'all') {
         const scheduledTasks = state.tasks.filter((task) => isScheduledOn(task, cell.date))
@@ -601,7 +623,7 @@ export class StatsService {
                 item.status === 'completed',
             ),
           )
-        return { ...cell, marked, scheduled }
+        return { ...cell, marked, scheduled, points }
       }
       const task = state.tasks.find((item) => item.id === filter)
       const scheduled = task ? isScheduledOn(task, cell.date) : false
@@ -611,7 +633,7 @@ export class StatsService {
           (item) =>
             item.taskId === filter && item.businessDate === cell.date && item.status === 'completed',
         )
-      return { ...cell, marked, scheduled }
+      return { ...cell, marked, scheduled, points }
     })
   }
 }

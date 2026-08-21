@@ -42,6 +42,7 @@
     --color-complete: var(--complete);
     --color-complete-foreground: var(--complete-foreground);
     --color-complete-soft: var(--complete-soft);
+    --color-loss: var(--loss);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -73,6 +74,7 @@
     --complete: oklch(0.546 0.155 254);
     --complete-foreground: oklch(0.99 0.01 254);
     --complete-soft: oklch(0.955 0.03 254);
+    --loss: oklch(0.58 0.08 22);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -108,6 +110,7 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
+    --loss: oklch(0.74 0.07 22);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);

@@ -12,10 +12,39 @@ import {
 import { useApp } from '@/hooks/use-app'
 import { formatChineseMonth, previousYearMonth, yearMonth } from '@/domain/dates'
 import { addDays, monthRange } from '@/domain/dates'
-import { formatRate } from '@/lib/format'
+import { formatDelta, formatRate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import type { CalendarDay } from '@/services/domain-services'
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
+
+function CalendarCell({ day }: { day: CalendarDay }) {
+  const showPoints = day.inMonth && day.points !== 0
+  return (
+    <div className="flex flex-col items-center gap-0.5 py-0.5">
+      <div
+        className={cn(
+          'flex size-8 items-center justify-center rounded-full text-sm tabular-nums',
+          !day.inMonth && 'text-muted-foreground/30',
+          day.inMonth && day.marked && 'bg-complete text-complete-foreground',
+          day.inMonth && !day.marked && 'text-foreground',
+        )}
+      >
+        {Number(day.date.slice(8, 10))}
+      </div>
+      <span
+        className={cn(
+          'h-3 whitespace-nowrap text-[11px] leading-3 tabular-nums',
+          showPoints && day.points > 0 && 'text-complete',
+          showPoints && day.points < 0 && 'text-loss',
+          !showPoints && 'invisible',
+        )}
+      >
+        {showPoints ? formatDelta(day.points) : '0'}
+      </span>
+    </div>
+  )
+}
 
 export function StatsPage() {
   const app = useApp()
@@ -145,17 +174,7 @@ export function StatsPage() {
             </div>
           ))}
           {days.map((day) => (
-            <div
-              key={day.date}
-              className={cn(
-                'flex aspect-square items-center justify-center rounded-full text-sm tabular-nums',
-                !day.inMonth && 'text-muted-foreground/30',
-                day.inMonth && day.marked && 'bg-complete text-complete-foreground',
-                day.inMonth && !day.marked && 'text-foreground',
-              )}
-            >
-              {Number(day.date.slice(8, 10))}
-            </div>
+            <CalendarCell key={day.date} day={day} />
           ))}
         </div>
       </section>
