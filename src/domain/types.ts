@@ -107,7 +107,7 @@ export interface AppState {
 
 export const STORAGE_KEY = 'checkin:v1'
 export const APP_VERSION = '0.1.0'
-export const APP_NAME = '打卡'
+export const APP_NAME = 'Habits'
 
 export const PROFILE = {
   name: '孤笑',
