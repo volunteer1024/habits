@@ -258,6 +258,24 @@ describe('app services', () => {
       2,
     )
   })
+
+  it('does not rewrite today instances on every getTodayItems call', async () => {
+    const { app } = await setup()
+    const first = await app.tasks.getTodayItems()
+    expect(first.map((item) => item.displayName)).toEqual(['背单词', '早睡（昨晚）', '喝药'])
+
+    let notifications = 0
+    const unsubscribe = app.store.subscribe(() => {
+      notifications += 1
+    })
+    const second = await app.tasks.getTodayItems()
+    const third = await app.tasks.getTodayItems()
+    unsubscribe()
+
+    expect(notifications).toBe(0)
+    expect(second.map((item) => item.instance.id)).toEqual(first.map((item) => item.instance.id))
+    expect(third).toHaveLength(3)
+  })
 })
 
 describe('date helpers used by stats', () => {

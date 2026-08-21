@@ -1,4 +1,4 @@
-import { useContext, useSyncExternalStore } from 'react'
+import { useContext, useMemo, useSyncExternalStore } from 'react'
 import { AppContext } from '@/app/app-context'
 
 export function useApp() {
@@ -11,5 +11,5 @@ export function useApp() {
     runtime.store.getSnapshot,
     runtime.store.getSnapshot,
   )
-  return { ...runtime, state }
+  return useMemo(() => ({ ...runtime, state }), [runtime, state])
 }

@@ -26,7 +26,7 @@ export function TodayPage() {
 
   useEffect(() => {
     void app.tasks.getTodayItems().then(setItems)
-  }, [app, app.state.taskInstances, app.state.tasks])
+  }, [app.tasks, app.state.taskInstances, app.state.tasks])
 
   const groupedLogs = useMemo(() => {
     const map = new Map<string, { name: string; count: number; penalty: number }>()

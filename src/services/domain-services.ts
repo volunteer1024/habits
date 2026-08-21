@@ -102,14 +102,23 @@ export class TaskService {
 
   async getTodayItems(): Promise<TodayItem[]> {
     const date = this.clock.today()
-    await this.store.update((state) => {
-      for (const task of state.tasks) {
-        if (task.status !== 'active') continue
-        if (isScheduledOn(task, date) || instanceOnDate(state, task.id, date)?.status === 'completed') {
-          ensureInstance(state, task, date)
-        }
-      }
+    const snapshot = this.store.getSnapshot()
+    const needsInstance = snapshot.tasks.some((task) => {
+      if (task.status !== 'active') return false
+      const existing = instanceOnDate(snapshot, task.id, date)
+      if (!isScheduledOn(task, date) && existing?.status !== 'completed') return false
+      return !existing
     })
+    if (needsInstance) {
+      await this.store.update((state) => {
+        for (const task of state.tasks) {
+          if (task.status !== 'active') continue
+          if (isScheduledOn(task, date) || instanceOnDate(state, task.id, date)?.status === 'completed') {
+            ensureInstance(state, task, date)
+          }
+        }
+      })
+    }
 
     const state = this.store.getSnapshot()
     const items: TodayItem[] = []
