@@ -6,6 +6,7 @@ export type PointTransactionType =
   | 'task_complete'
   | 'task_undo'
   | 'bad_habit'
+  | 'bad_habit_undo'
   | 'reward_redeem'
   | 'monthly_bonus'
 

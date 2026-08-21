@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
 import { TaskRow } from '@/components/today/task-row'
 import { Button } from '@/components/ui/button'
@@ -29,13 +29,18 @@ export function TodayPage() {
   }, [app.tasks, app.state.taskInstances, app.state.tasks])
 
   const groupedLogs = useMemo(() => {
-    const map = new Map<string, { name: string; count: number; penalty: number }>()
+    const map = new Map<
+      string,
+      { habitId: string; name: string; count: number; penalty: number; latestLogId: string }
+    >()
     for (const log of logs) {
       const current = map.get(log.habitId)
       map.set(log.habitId, {
+        habitId: log.habitId,
         name: log.habitNameSnapshot,
         count: (current?.count ?? 0) + 1,
         penalty: (current?.penalty ?? 0) + log.penaltySnapshot,
+        latestLogId: log.id,
       })
     }
     return [...map.values()]
@@ -59,6 +64,14 @@ export function TodayPage() {
       setHabitOpen(false)
     } catch (error) {
       toast.error(error instanceof AppError ? error.message : '记录失败')
+    }
+  }
+
+  async function removeHabitLog(logId: string) {
+    try {
+      await app.habits.removeTodayLog(logId)
+    } catch (error) {
+      toast.error(error instanceof AppError ? error.message : '删除失败')
     }
   }
 
@@ -99,8 +112,8 @@ export function TodayPage() {
           <div className="space-y-2">
             {groupedLogs.map((log) => (
               <div
-                key={log.name}
-                className="flex items-center justify-between rounded-2xl border bg-card px-4 py-3"
+                key={log.habitId}
+                className="flex items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3"
               >
                 <span className="text-sm">
                   {log.name}
@@ -108,9 +121,20 @@ export function TodayPage() {
                     <span className="ml-1 text-muted-foreground">×{log.count}</span>
                   ) : null}
                 </span>
-                <span className="tabular-nums text-sm text-muted-foreground">
-                  {formatDelta(-log.penalty)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="tabular-nums text-sm text-muted-foreground">
+                    {formatDelta(-log.penalty)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={log.count > 1 ? `删除一次${log.name}` : `删除${log.name}`}
+                    onClick={() => void removeHabitLog(log.latestLogId)}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

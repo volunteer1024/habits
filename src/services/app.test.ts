@@ -83,6 +83,53 @@ describe('app services', () => {
     expect(reloaded.habits.logsForDate('2026-08-21')).toHaveLength(2)
   })
 
+  it('removes a today habit log, restores snapshot points, and survives reload', async () => {
+    const { adapter, app } = await setup()
+    const tea = habitByName(app, '喝奶茶')
+    await app.habits.record(tea.id)
+    await app.habits.update(tea.id, { penalty: 15 })
+    await app.habits.record(tea.id)
+    expect(app.points.balance()).toBe(-25)
+
+    const logs = app.habits.logsForDate('2026-08-21')
+    const first = logs[0]
+    if (!first) throw new Error('missing habit log')
+    await app.habits.removeTodayLog(first.id)
+    expect(app.points.balance()).toBe(-15)
+    expect(app.habits.logsForDate('2026-08-21')).toHaveLength(1)
+    expect(app.habits.logsForDate('2026-08-21')[0]?.penaltySnapshot).toBe(15)
+    expect(
+      app.store.getSnapshot().pointTransactions.filter((item) => item.type === 'bad_habit_undo'),
+    ).toMatchObject([{ delta: 10, description: '喝奶茶 撤销' }])
+
+    const reloaded = createApp(adapter, fixedClock('2026-08-21'))
+    await reloaded.bootstrap()
+    expect(reloaded.points.balance()).toBe(-15)
+    expect(reloaded.habits.logsForDate('2026-08-21')).toHaveLength(1)
+  })
+
+  it('rejects removing a habit log from a previous day', async () => {
+    const { adapter, app } = await setup('2026-08-21')
+    await app.habits.record(habitByName(app, '喝酒').id)
+    const log = app.habits.logsForDate('2026-08-21')[0]
+    if (!log) throw new Error('missing habit log')
+
+    const nextDay = createApp(adapter, fixedClock('2026-08-22'))
+    await nextDay.bootstrap()
+    await expect(nextDay.habits.removeTodayLog(log.id)).rejects.toMatchObject({
+      code: 'HISTORY_LOCKED',
+    })
+    expect(nextDay.habits.logsForDate('2026-08-21')).toHaveLength(1)
+    expect(nextDay.points.balance()).toBe(-20)
+  })
+
+  it('rejects removing a missing habit log', async () => {
+    const { app } = await setup()
+    await expect(app.habits.removeTodayLog('missing')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+  })
+
   it('keeps historical points after the task value changes', async () => {
     const { adapter, app } = await setup()
     const vocab = taskByName(app, '背单词')

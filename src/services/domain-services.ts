@@ -346,6 +346,29 @@ export class HabitService {
       })
     })
   }
+
+  async removeTodayLog(logId: string): Promise<void> {
+    const date = this.clock.today()
+    await this.store.update((state) => {
+      const index = state.habitLogs.findIndex((item) => item.id === logId)
+      if (index === -1) throw new AppError('NOT_FOUND', '记录不存在')
+      const log = state.habitLogs[index]
+      if (!log) throw new AppError('NOT_FOUND', '记录不存在')
+      if (log.businessDate !== date) {
+        throw new AppError('HISTORY_LOCKED', '只能删除今天的记录')
+      }
+      state.habitLogs.splice(index, 1)
+      state.pointTransactions.push({
+        id: createId(),
+        type: 'bad_habit_undo',
+        delta: log.penaltySnapshot,
+        sourceId: log.id,
+        description: `${log.habitNameSnapshot} 撤销`,
+        businessDate: date,
+        createdAt: this.clock.nowIso(),
+      })
+    })
+  }
 }
 
 export class PointService {
