@@ -4,8 +4,10 @@ import {
   eachDate,
   endOfMonth,
   endOfWeekSunday,
+  checkinDayLabel,
   formatChineseDate,
   formatLocalDate,
+  isWithinCheckinWindow,
   isoWeekday,
   monthRange,
   monthsFromTo,
@@ -82,5 +84,27 @@ describe('local business dates', () => {
   it('formats Chinese display dates', () => {
     expect(formatChineseDate('2026-08-21')).toBe('8 月 21 日 星期五')
     expect(formatChineseDate('2026-08-23')).toBe('8 月 23 日 星期日')
+  })
+
+  it('treats today and the previous two days as inside the check-in window', () => {
+    expect(isWithinCheckinWindow('2026-08-21', '2026-08-21')).toBe(true)
+    expect(isWithinCheckinWindow('2026-08-20', '2026-08-21')).toBe(true)
+    expect(isWithinCheckinWindow('2026-08-19', '2026-08-21')).toBe(true)
+    expect(isWithinCheckinWindow('2026-08-18', '2026-08-21')).toBe(false)
+    expect(isWithinCheckinWindow('2026-08-22', '2026-08-21')).toBe(false)
+  })
+
+  it('keeps the three-day window across a month boundary', () => {
+    expect(isWithinCheckinWindow('2026-03-30', '2026-04-01')).toBe(true)
+    expect(isWithinCheckinWindow('2026-03-31', '2026-04-01')).toBe(true)
+    expect(isWithinCheckinWindow('2026-04-01', '2026-04-01')).toBe(true)
+    expect(isWithinCheckinWindow('2026-03-29', '2026-04-01')).toBe(false)
+    expect(isWithinCheckinWindow('2026-04-02', '2026-04-01')).toBe(false)
+  })
+
+  it('labels selected check-in days as 今天, 昨天, or 前天', () => {
+    expect(checkinDayLabel('2026-04-01', '2026-04-01')).toBe('今天')
+    expect(checkinDayLabel('2026-03-31', '2026-04-01')).toBe('昨天')
+    expect(checkinDayLabel('2026-03-30', '2026-04-01')).toBe('前天')
   })
 })

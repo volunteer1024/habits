@@ -4,6 +4,7 @@ import {
   calendarGrid,
   endOfMonth,
   endOfWeekSunday,
+  isWithinCheckinWindow,
   monthRange,
   startOfMonth,
   startOfWeekMonday,
@@ -13,6 +14,7 @@ import { AppError } from '@/domain/errors'
 import { createId, endedBefore, isScheduledOn, scheduledDates } from '@/domain/schedule'
 import { displayTaskName } from '@/domain/types'
 import type {
+  AppState,
   BadHabit,
   BadHabitLog,
   EndType,
@@ -64,6 +66,53 @@ function requireTask(state: { tasks: Task[] }, id: string): Task {
   return task
 }
 
+function requireWritableDate(todayDate: string, date: string) {
+  if (!isWithinCheckinWindow(date, todayDate)) {
+    throw new AppError('HISTORY_LOCKED', '只能修改最近三天的记录')
+  }
+}
+
+function reconcileSettledMonth(state: AppState, date: string, todayDate: string, nowIso: string) {
+  const ym = yearMonth(date)
+  if (ym >= yearMonth(todayDate)) return
+  const settlement = state.settlements.find((item) => item.yearMonth === ym)
+  if (!settlement) return
+
+  const { start, end } = monthRange(ym)
+  for (const task of state.tasks) {
+    if (task.monthlyPerfectBonus <= 0) continue
+    if (!isEligibleForMonthlyBonus(task, ym)) continue
+    const scheduled = scheduledDates(task, start, end)
+    if (scheduled.length === 0) continue
+    const done = completedSet(state.taskInstances, task.id)
+    const shouldAward = scheduled.every((item) => done.has(item))
+    const awarded = settlement.awardedTaskIds.includes(task.id)
+    if (shouldAward && !awarded) {
+      state.pointTransactions.push({
+        id: createId(),
+        type: 'monthly_bonus',
+        delta: task.monthlyPerfectBonus,
+        sourceId: `${task.id}:${ym}`,
+        description: `${Number(ym.slice(5, 7))} 月${task.name}全勤`,
+        businessDate: end,
+        createdAt: nowIso,
+      })
+      settlement.awardedTaskIds.push(task.id)
+    } else if (!shouldAward && awarded) {
+      state.pointTransactions.push({
+        id: createId(),
+        type: 'monthly_bonus_undo',
+        delta: -task.monthlyPerfectBonus,
+        sourceId: `${task.id}:${ym}`,
+        description: `${Number(ym.slice(5, 7))} 月${task.name}全勤 撤销`,
+        businessDate: end,
+        createdAt: nowIso,
+      })
+      settlement.awardedTaskIds = settlement.awardedTaskIds.filter((id) => id !== task.id)
+    }
+  }
+}
+
 function instanceOnDate(state: { taskInstances: TaskInstance[] }, taskId: string, date: string) {
   return state.taskInstances.find((item) => item.taskId === taskId && item.businessDate === date)
 }
@@ -101,7 +150,10 @@ export class TaskService {
   }
 
   async getTodayItems(): Promise<TodayItem[]> {
-    const date = this.clock.today()
+    return this.getItemsForDate(this.clock.today())
+  }
+
+  async getItemsForDate(date: string): Promise<TodayItem[]> {
     const snapshot = this.store.getSnapshot()
     const needsInstance = snapshot.tasks.some((task) => {
       if (task.status !== 'active') return false
@@ -137,12 +189,12 @@ export class TaskService {
     return items
   }
 
-  async complete(taskId: string): Promise<void> {
-    const date = this.clock.today()
+  async complete(taskId: string, date = this.clock.today()): Promise<void> {
+    requireWritableDate(this.clock.today(), date)
     await this.store.update((state) => {
       const task = requireTask(state, taskId)
       if (!isScheduledOn(task, date)) {
-        throw new AppError('NOT_SCHEDULED', '今天没有这个任务')
+        throw new AppError('NOT_SCHEDULED', '这一天没有这个任务')
       }
       const instance = ensureInstance(state, task, date)
       if (instance.status === 'completed') return
@@ -160,11 +212,12 @@ export class TaskService {
         businessDate: date,
         createdAt: this.clock.nowIso(),
       })
+      reconcileSettledMonth(state, date, this.clock.today(), this.clock.nowIso())
     })
   }
 
-  async undo(taskId: string): Promise<void> {
-    const date = this.clock.today()
+  async undo(taskId: string, date = this.clock.today()): Promise<void> {
+    requireWritableDate(this.clock.today(), date)
     await this.store.update((state) => {
       const instance = instanceOnDate(state, taskId, date)
       if (!instance || instance.status !== 'completed') return
@@ -180,6 +233,7 @@ export class TaskService {
         businessDate: date,
         createdAt: this.clock.nowIso(),
       })
+      reconcileSettledMonth(state, date, this.clock.today(), this.clock.nowIso())
     })
   }
 
@@ -319,8 +373,8 @@ export class HabitService {
     await this.habits.update(id, { status: 'archived', updatedAt: this.clock.nowIso() })
   }
 
-  async record(habitId: string): Promise<void> {
-    const date = this.clock.today()
+  async record(habitId: string, date = this.clock.today()): Promise<void> {
+    requireWritableDate(this.clock.today(), date)
     await this.store.update((state) => {
       const habit = state.habits.find((item) => item.id === habitId)
       if (!habit || habit.status !== 'active') {
@@ -348,15 +402,12 @@ export class HabitService {
   }
 
   async removeTodayLog(logId: string): Promise<void> {
-    const date = this.clock.today()
     await this.store.update((state) => {
       const index = state.habitLogs.findIndex((item) => item.id === logId)
       if (index === -1) throw new AppError('NOT_FOUND', '记录不存在')
       const log = state.habitLogs[index]
       if (!log) throw new AppError('NOT_FOUND', '记录不存在')
-      if (log.businessDate !== date) {
-        throw new AppError('HISTORY_LOCKED', '只能删除今天的记录')
-      }
+      requireWritableDate(this.clock.today(), log.businessDate)
       state.habitLogs.splice(index, 1)
       state.pointTransactions.push({
         id: createId(),
@@ -364,7 +415,7 @@ export class HabitService {
         delta: log.penaltySnapshot,
         sourceId: log.id,
         description: `${log.habitNameSnapshot} 撤销`,
-        businessDate: date,
+        businessDate: log.businessDate,
         createdAt: this.clock.nowIso(),
       })
     })
@@ -534,7 +585,9 @@ function transactionMatchesTask(
   taskId: string,
   instanceTaskId: Map<string, string>,
 ): boolean {
-  if (tx.type === 'monthly_bonus') return tx.sourceId.startsWith(`${taskId}:`)
+  if (tx.type === 'monthly_bonus' || tx.type === 'monthly_bonus_undo') {
+    return tx.sourceId.startsWith(`${taskId}:`)
+  }
   if (tx.type === 'task_complete' || tx.type === 'task_undo') {
     return instanceTaskId.get(tx.sourceId) === taskId
   }

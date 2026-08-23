@@ -9,6 +9,7 @@ export type PointTransactionType =
   | 'bad_habit_undo'
   | 'reward_redeem'
   | 'monthly_bonus'
+  | 'monthly_bonus_undo'
 
 export interface ScheduleRule {
   frequency: Frequency

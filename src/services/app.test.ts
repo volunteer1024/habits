@@ -108,19 +108,55 @@ describe('app services', () => {
     expect(reloaded.habits.logsForDate('2026-08-21')).toHaveLength(1)
   })
 
-  it('rejects removing a habit log from a previous day', async () => {
-    const { adapter, app } = await setup('2026-08-21')
-    await app.habits.record(habitByName(app, '喝酒').id)
-    const log = app.habits.logsForDate('2026-08-21')[0]
+  it('records a bad habit on yesterday', async () => {
+    const { adapter } = await setup('2026-08-20')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    await app.habits.record(habitByName(app, '喝奶茶').id, '2026-08-20')
+    expect(app.habits.logsForDate('2026-08-20')).toHaveLength(1)
+    expect(app.habits.logsForDate('2026-08-21')).toHaveLength(0)
+    expect(app.points.balance()).toBe(-10)
+    expect(
+      app.store.getSnapshot().pointTransactions.some(
+        (item) => item.type === 'bad_habit' && item.businessDate === '2026-08-20',
+      ),
+    ).toBe(true)
+  })
+
+  it('removes a habit log from the day before yesterday', async () => {
+    const { adapter, app: seeded } = await setup('2026-08-19')
+    await seeded.habits.record(habitByName(seeded, '喝酒').id)
+    const log = seeded.habits.logsForDate('2026-08-19')[0]
     if (!log) throw new Error('missing habit log')
 
-    const nextDay = createApp(adapter, fixedClock('2026-08-22'))
-    await nextDay.bootstrap()
-    await expect(nextDay.habits.removeTodayLog(log.id)).rejects.toMatchObject({
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    await app.habits.removeTodayLog(log.id)
+    expect(app.habits.logsForDate('2026-08-19')).toHaveLength(0)
+    expect(app.points.balance()).toBe(0)
+    expect(
+      app.store.getSnapshot().pointTransactions.some(
+        (item) => item.type === 'bad_habit_undo' && item.businessDate === '2026-08-19',
+      ),
+    ).toBe(true)
+  })
+
+  it('rejects recording or removing a habit log outside the three-day window', async () => {
+    const { adapter, app: seeded } = await setup('2026-08-17')
+    await seeded.habits.record(habitByName(seeded, '喝酒').id)
+    const log = seeded.habits.logsForDate('2026-08-17')[0]
+    if (!log) throw new Error('missing habit log')
+
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    await expect(app.habits.record(habitByName(app, '喝奶茶').id, '2026-08-17')).rejects.toMatchObject({
       code: 'HISTORY_LOCKED',
     })
-    expect(nextDay.habits.logsForDate('2026-08-21')).toHaveLength(1)
-    expect(nextDay.points.balance()).toBe(-20)
+    await expect(app.habits.removeTodayLog(log.id)).rejects.toMatchObject({
+      code: 'HISTORY_LOCKED',
+    })
+    expect(app.habits.logsForDate('2026-08-17')).toHaveLength(1)
+    expect(app.points.balance()).toBe(-20)
   })
 
   it('rejects removing a missing habit log', async () => {
@@ -187,6 +223,35 @@ describe('app services', () => {
     await expect(app.rewards.redeem(gadget.id)).rejects.toBeInstanceOf(AppError)
   })
 
+  it('keeps a redemption after a yesterday habit makes the balance negative', async () => {
+    const { adapter } = await setup('2026-08-20')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    await app.store.update((state) => {
+      state.pointTransactions.push({
+        id: 'seed-points',
+        type: 'task_complete',
+        delta: 200,
+        sourceId: 'seed',
+        description: '测试入账',
+        businessDate: '2026-08-21',
+        createdAt: '2026-08-21T04:00:00.000Z',
+      })
+    })
+    const gadget = rewardByName(app, '任意 200 元电子产品')
+    await app.rewards.redeem(gadget.id)
+    expect(app.points.balance()).toBe(0)
+    await app.habits.record(habitByName(app, '喝酒').id, '2026-08-20')
+    expect(app.points.balance()).toBe(-20)
+    expect(app.store.getSnapshot().redemptions).toHaveLength(1)
+    expect(app.store.getSnapshot().redemptions[0]?.rewardId).toBe(gadget.id)
+    expect(
+      app.store.getSnapshot().pointTransactions.some(
+        (item) => item.type === 'bad_habit' && item.businessDate === '2026-08-20',
+      ),
+    ).toBe(true)
+  })
+
   it('blocks redeem when points are insufficient or the cap is reached', async () => {
     const { app } = await setup()
     const massage = rewardByName(app, '按摩')
@@ -246,6 +311,42 @@ describe('app services', () => {
     expect(vocabDays.find((day) => day.date === '2026-08-21')?.points).toBe(5)
   })
 
+  it('includes monthly bonus undo when filtering calendar points by task', async () => {
+    const { app } = await setup('2026-08-21')
+    const vocab = taskByName(app, '背单词')
+    await app.store.update((state) => {
+      state.pointTransactions.push(
+        {
+          id: 'bonus',
+          type: 'monthly_bonus',
+          delta: 100,
+          sourceId: `${vocab.id}:2026-07`,
+          description: '7 月背单词全勤',
+          businessDate: '2026-07-31',
+          createdAt: '2026-08-01T00:00:00.000Z',
+        },
+        {
+          id: 'bonus-undo',
+          type: 'monthly_bonus_undo',
+          delta: -100,
+          sourceId: `${vocab.id}:2026-07`,
+          description: '7 月背单词全勤 撤销',
+          businessDate: '2026-07-31',
+          createdAt: '2026-08-21T00:00:00.000Z',
+        },
+      )
+    })
+
+    const allDays = app.stats.calendarDays('2026-07')
+    expect(allDays.find((day) => day.date === '2026-07-31')?.points).toBe(0)
+
+    const vocabDays = app.stats.calendarDays('2026-07', vocab.id)
+    expect(vocabDays.find((day) => day.date === '2026-07-31')?.points).toBe(0)
+
+    const medicineDays = app.stats.calendarDays('2026-07', taskByName(app, '喝药').id)
+    expect(medicineDays.find((day) => day.date === '2026-07-31')?.points).toBe(0)
+  })
+
   it('awards a monthly perfect bonus once via lazy settlement', async () => {
     const adapter = new MemoryStorageAdapter()
     const september = createApp(adapter, fixedClock('2026-09-01'))
@@ -272,6 +373,141 @@ describe('app services', () => {
     expect(
       october.store.getSnapshot().pointTransactions.filter((item) => item.type === 'monthly_bonus'),
     ).toHaveLength(1)
+  })
+
+  it('awards a settled-month bonus after makeup completes the last missed day', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const september = createApp(adapter, fixedClock('2026-09-01'))
+    await september.bootstrap()
+    const vocab = taskByName(september, '背单词')
+    await september.tasks.update(vocab.id, { monthlyPerfectBonus: 100 })
+    const { start, end } = monthRange('2026-09')
+    for (const date of eachDate(start, end)) {
+      if (date === '2026-09-30') continue
+      const dayApp = createApp(adapter, fixedClock(date))
+      await dayApp.bootstrap()
+      await dayApp.tasks.complete(vocab.id)
+    }
+
+    const october = createApp(adapter, fixedClock('2026-10-02'))
+    await october.bootstrap()
+    expect(
+      october.store.getSnapshot().pointTransactions.filter((item) => item.type === 'monthly_bonus'),
+    ).toHaveLength(0)
+
+    await october.tasks.complete(vocab.id, '2026-09-30')
+    const bonus = october.store
+      .getSnapshot()
+      .pointTransactions.filter((item) => item.type === 'monthly_bonus')
+    expect(bonus).toHaveLength(1)
+    expect(bonus[0]).toMatchObject({
+      delta: 100,
+      sourceId: `${vocab.id}:2026-09`,
+      businessDate: '2026-09-30',
+    })
+    expect(
+      october.store.getSnapshot().settlements.find((item) => item.yearMonth === '2026-09')
+        ?.awardedTaskIds,
+    ).toContain(vocab.id)
+  })
+
+  it('claws back a settled-month bonus after undoing a completed day', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const september = createApp(adapter, fixedClock('2026-09-01'))
+    await september.bootstrap()
+    const vocab = taskByName(september, '背单词')
+    await september.tasks.update(vocab.id, { monthlyPerfectBonus: 100 })
+    const { start, end } = monthRange('2026-09')
+    for (const date of eachDate(start, end)) {
+      const dayApp = createApp(adapter, fixedClock(date))
+      await dayApp.bootstrap()
+      await dayApp.tasks.complete(vocab.id)
+    }
+
+    const october = createApp(adapter, fixedClock('2026-10-02'))
+    await october.bootstrap()
+    const originalBonus = october.store
+      .getSnapshot()
+      .pointTransactions.filter((item) => item.type === 'monthly_bonus')
+    expect(originalBonus).toHaveLength(1)
+
+    await october.tasks.undo(vocab.id, '2026-09-30')
+    const txs = october.store.getSnapshot().pointTransactions
+    expect(txs.filter((item) => item.type === 'monthly_bonus')).toHaveLength(1)
+    expect(txs.filter((item) => item.type === 'monthly_bonus_undo')).toMatchObject([
+      {
+        delta: -100,
+        sourceId: `${vocab.id}:2026-09`,
+        businessDate: '2026-09-30',
+      },
+    ])
+    expect(
+      october.store.getSnapshot().settlements.find((item) => item.yearMonth === '2026-09')
+        ?.awardedTaskIds,
+    ).not.toContain(vocab.id)
+  })
+
+  it('does not award a bonus when a settled month is still incomplete', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const september = createApp(adapter, fixedClock('2026-09-01'))
+    await september.bootstrap()
+    const vocab = taskByName(september, '背单词')
+    await september.tasks.update(vocab.id, { monthlyPerfectBonus: 100 })
+    const { start, end } = monthRange('2026-09')
+    for (const date of eachDate(start, end)) {
+      if (date === '2026-09-29' || date === '2026-09-30') continue
+      const dayApp = createApp(adapter, fixedClock(date))
+      await dayApp.bootstrap()
+      await dayApp.tasks.complete(vocab.id)
+    }
+
+    const october = createApp(adapter, fixedClock('2026-10-02'))
+    await october.bootstrap()
+    await october.tasks.complete(vocab.id, '2026-09-30')
+    expect(
+      october.store.getSnapshot().pointTransactions.filter((item) => item.type === 'monthly_bonus'),
+    ).toHaveLength(0)
+  })
+
+  it('does not award a current-month bonus when makeup completes every day so far', async () => {
+    const { adapter } = await setup('2026-10-01')
+    const app = createApp(adapter, fixedClock('2026-10-02'))
+    await app.bootstrap()
+    const vocab = taskByName(app, '背单词')
+    await app.tasks.update(vocab.id, { monthlyPerfectBonus: 100 })
+    await app.tasks.complete(vocab.id, '2026-10-01')
+    await app.tasks.complete(vocab.id, '2026-10-02')
+    expect(
+      app.store.getSnapshot().pointTransactions.filter((item) => item.type === 'monthly_bonus'),
+    ).toHaveLength(0)
+    expect(app.store.getSnapshot().settlements.map((item) => item.yearMonth)).not.toContain(
+      '2026-10',
+    )
+  })
+
+  it('does not change monthly bonus when recording a habit in a settled month', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const september = createApp(adapter, fixedClock('2026-09-01'))
+    await september.bootstrap()
+    const vocab = taskByName(september, '背单词')
+    await september.tasks.update(vocab.id, { monthlyPerfectBonus: 100 })
+    const { start, end } = monthRange('2026-09')
+    for (const date of eachDate(start, end)) {
+      const dayApp = createApp(adapter, fixedClock(date))
+      await dayApp.bootstrap()
+      await dayApp.tasks.complete(vocab.id)
+    }
+
+    const october = createApp(adapter, fixedClock('2026-10-02'))
+    await october.bootstrap()
+    const before = october.store
+      .getSnapshot()
+      .pointTransactions.filter((item) => item.type === 'monthly_bonus' || item.type === 'monthly_bonus_undo')
+    await october.habits.record(habitByName(october, '喝酒').id, '2026-09-30')
+    const after = october.store
+      .getSnapshot()
+      .pointTransactions.filter((item) => item.type === 'monthly_bonus' || item.type === 'monthly_bonus_undo')
+    expect(after).toEqual(before)
   })
 
   it('does not award a bonus when the task started mid-month', async () => {
@@ -321,6 +557,97 @@ describe('app services', () => {
     expect(reloaded.store.getSnapshot().tasks.filter((item) => item.status === 'active')).toHaveLength(
       2,
     )
+  })
+
+  it('completes a task on yesterday and records that business date', async () => {
+    const { adapter } = await setup('2026-08-20')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    const vocab = taskByName(app, '背单词')
+    await app.tasks.complete(vocab.id, '2026-08-20')
+    expect(app.points.balance()).toBe(5)
+    const yesterday = await app.tasks.getItemsForDate('2026-08-20')
+    expect(yesterday[0]?.instance.status).toBe('completed')
+    expect(
+      app.store.getSnapshot().pointTransactions.some(
+        (item) => item.type === 'task_complete' && item.businessDate === '2026-08-20',
+      ),
+    ).toBe(true)
+    const today = await app.tasks.getTodayItems()
+    expect(today[0]?.instance.status).toBe('pending')
+  })
+
+  it('undoes a completed task on the day before yesterday', async () => {
+    const { adapter, app: seeded } = await setup('2026-08-19')
+    const vocab = taskByName(seeded, '背单词')
+    await seeded.tasks.complete(vocab.id)
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    await app.tasks.undo(vocab.id, '2026-08-19')
+    expect(app.points.balance()).toBe(0)
+    const items = await app.tasks.getItemsForDate('2026-08-19')
+    expect(items[0]?.instance.status).toBe('pending')
+    expect(
+      app.store.getSnapshot().pointTransactions.some(
+        (item) => item.type === 'task_undo' && item.businessDate === '2026-08-19',
+      ),
+    ).toBe(true)
+  })
+
+  it('rejects completing or undoing a task outside the three-day window', async () => {
+    const { adapter } = await setup('2026-08-17')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    const vocab = taskByName(app, '背单词')
+    await expect(app.tasks.complete(vocab.id, '2026-08-17')).rejects.toMatchObject({
+      code: 'HISTORY_LOCKED',
+    })
+    await expect(app.tasks.undo(vocab.id, '2026-08-17')).rejects.toMatchObject({
+      code: 'HISTORY_LOCKED',
+    })
+    await expect(app.tasks.complete(vocab.id, '2026-08-22')).rejects.toMatchObject({
+      code: 'HISTORY_LOCKED',
+    })
+  })
+
+  it('keeps locked points when completing a past pending task after the value changes', async () => {
+    const { adapter } = await setup('2026-08-20')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    const vocab = taskByName(app, '背单词')
+    await app.tasks.update(vocab.id, { points: 10 })
+    await app.tasks.complete(vocab.id, '2026-08-20')
+    expect(app.points.balance()).toBe(10)
+    const completed = await app.tasks.getItemsForDate('2026-08-20')
+    expect(completed[0]?.instance.lockedPoints).toBe(10)
+    await app.tasks.undo(vocab.id, '2026-08-20')
+    await app.tasks.update(vocab.id, { points: 3 })
+    await app.tasks.complete(vocab.id, '2026-08-20')
+    expect(app.points.balance()).toBe(10)
+    expect(
+      app.store.getSnapshot().pointTransactions.filter((item) => item.type === 'task_complete'),
+    ).toMatchObject([{ businessDate: '2026-08-20' }, { businessDate: '2026-08-20' }])
+  })
+
+  it('lists scheduled items for a past date without rewriting on every call', async () => {
+    const { adapter } = await setup('2026-08-20')
+    const app = createApp(adapter, fixedClock('2026-08-21'))
+    await app.bootstrap()
+    const first = await app.tasks.getItemsForDate('2026-08-20')
+    expect(first.map((item) => item.displayName)).toEqual(['背单词', '早睡（昨晚）', '喝药'])
+    expect(first.every((item) => item.instance.businessDate === '2026-08-20')).toBe(true)
+
+    let notifications = 0
+    const unsubscribe = app.store.subscribe(() => {
+      notifications += 1
+    })
+    const second = await app.tasks.getItemsForDate('2026-08-20')
+    const third = await app.tasks.getItemsForDate('2026-08-20')
+    unsubscribe()
+
+    expect(notifications).toBe(0)
+    expect(second.map((item) => item.instance.id)).toEqual(first.map((item) => item.instance.id))
+    expect(third).toHaveLength(3)
   })
 
   it('does not rewrite today instances on every getTodayItems call', async () => {

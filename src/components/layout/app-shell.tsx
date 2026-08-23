@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { APP_NAME } from '@/domain/types'
 
 const nav = [
-  { to: '/today', label: '今日', icon: SunMedium },
+  { to: '/today', label: '打卡', icon: SunMedium },
   { to: '/stats', label: '统计', icon: BarChart3 },
   { to: '/points', label: '积分', icon: Coins },
   { to: '/me', label: '我的', icon: User },

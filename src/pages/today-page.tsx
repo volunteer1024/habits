@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, X } from 'lucide-react'
+import { ChevronsUpDown, Plus, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
+import { CheckinCalendar } from '@/components/today/checkin-calendar'
 import { TaskRow } from '@/components/today/task-row'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +12,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer'
 import { useApp } from '@/hooks/use-app'
-import { formatChineseDate } from '@/domain/dates'
+import { checkinDayLabel, formatChineseDate, isWithinCheckinWindow } from '@/domain/dates'
 import { formatBalance, formatDelta } from '@/lib/format'
 import { AppError } from '@/domain/errors'
 import type { BadHabitLog } from '@/domain/types'
@@ -37,23 +38,27 @@ function groupTodayHabitLogs(logs: BadHabitLog[]) {
 
 export function TodayPage() {
   const app = useApp()
+  const today = app.clock.today()
+  const [pickedDate, setPickedDate] = useState(today)
+  const selectedDate = isWithinCheckinWindow(pickedDate, today) ? pickedDate : today
+  const [calendarOpen, setCalendarOpen] = useState(false)
   const [items, setItems] = useState<TodayItem[]>([])
   const [habitOpen, setHabitOpen] = useState(false)
-  const today = app.clock.today()
+  const isToday = selectedDate === today
   const habits = app.state.habits.filter((habit) => habit.status === 'active')
-  const logs = app.habits.logsForDate(today)
+  const logs = app.habits.logsForDate(selectedDate)
   const groupedLogs = groupTodayHabitLogs(logs)
 
   useEffect(() => {
-    void app.tasks.getTodayItems().then(setItems)
-  }, [app.tasks, app.state.taskInstances, app.state.tasks])
+    void app.tasks.getItemsForDate(selectedDate).then(setItems)
+  }, [app.tasks, app.state.taskInstances, app.state.tasks, selectedDate])
 
   async function toggle(item: TodayItem) {
     try {
       if (item.instance.status === 'completed') {
-        await app.tasks.undo(item.task.id)
+        await app.tasks.undo(item.task.id, selectedDate)
       } else {
-        await app.tasks.complete(item.task.id)
+        await app.tasks.complete(item.task.id, selectedDate)
       }
     } catch (error) {
       toast.error(error instanceof AppError ? error.message : '操作失败')
@@ -62,7 +67,7 @@ export function TodayPage() {
 
   async function recordHabit(id: string) {
     try {
-      await app.habits.record(id)
+      await app.habits.record(id, selectedDate)
       setHabitOpen(false)
     } catch (error) {
       toast.error(error instanceof AppError ? error.message : '记录失败')
@@ -80,13 +85,32 @@ export function TodayPage() {
   return (
     <div>
       <PageHeader
-        title="今天"
-        description={formatChineseDate(today)}
+        title={checkinDayLabel(selectedDate, today)}
+        titleAddon={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="选择日期"
+            onClick={() => setCalendarOpen(true)}
+          >
+            <ChevronsUpDown />
+          </Button>
+        }
+        description={formatChineseDate(selectedDate)}
         action={
           <div className="rounded-full bg-complete-soft px-3 py-1 text-sm font-medium text-complete">
             {formatBalance(app.points.balance())} 积分
           </div>
         }
+      />
+
+      <CheckinCalendar
+        open={calendarOpen}
+        todayDate={today}
+        selectedDate={selectedDate}
+        onOpenChange={setCalendarOpen}
+        onSelect={setPickedDate}
       />
 
       <section className="space-y-2">
@@ -95,7 +119,7 @@ export function TodayPage() {
         ))}
         {items.length === 0 ? (
           <p className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            今天没有任务
+            {isToday ? '今天没有任务' : '这一天没有任务'}
           </p>
         ) : null}
       </section>
@@ -109,7 +133,9 @@ export function TodayPage() {
           </Button>
         </div>
         {groupedLogs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">今天还没有记录</p>
+          <p className="text-sm text-muted-foreground">
+            {isToday ? '今天还没有记录' : '这一天还没有记录'}
+          </p>
         ) : (
           <div className="space-y-2">
             {groupedLogs.map((log) => (

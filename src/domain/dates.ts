@@ -104,6 +104,17 @@ export function formatLedgerDay(date: string, todayDate: string): string {
   return `${parsed.getMonth() + 1} 月 ${parsed.getDate()} 日`
 }
 
+export function isWithinCheckinWindow(date: string, todayDate: string): boolean {
+  return date >= addDays(todayDate, -2) && date <= todayDate
+}
+
+export function checkinDayLabel(date: string, todayDate: string): string {
+  if (date === todayDate) return '今天'
+  if (date === addDays(todayDate, -1)) return '昨天'
+  if (date === addDays(todayDate, -2)) return '前天'
+  return formatLedgerDay(date, todayDate)
+}
+
 export function weekdayLabel(isoDay: number): string {
   const labels = ['一', '二', '三', '四', '五', '六', '日']
   return labels[isoDay - 1] ?? ''
