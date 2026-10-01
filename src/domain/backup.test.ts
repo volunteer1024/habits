@@ -118,6 +118,11 @@ function backupOf(state: AppState): string {
   return serializeBackup(createBackup(state, EXPORTED_AT))
 }
 
+function parseDocument(raw: string) {
+  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+  return JSON.parse(text) as unknown
+}
+
 function expectRejected(raw: string, message: string) {
   try {
     parseBackup(raw)
@@ -134,7 +139,7 @@ describe('backup document', () => {
   it('round-trips a full state and keeps schema version and timestamp', () => {
     const state = filledState()
     const raw = backupOf(state)
-    const document = JSON.parse(raw) as { schemaVersion: number; exportedAt: string; state: AppState }
+    const document = parseDocument(raw) as { schemaVersion: number; exportedAt: string; state: AppState }
 
     expect(raw.split('\n')[1]?.startsWith('  ')).toBe(true)
     expect(document.schemaVersion).toBe(1)
@@ -142,9 +147,24 @@ describe('backup document', () => {
     expect(parseBackup(raw)).toEqual(state)
   })
 
+  it('round-trips a BOM-prefixed backup and keeps Chinese as Unicode', () => {
+    const state = filledState()
+    const transaction = state.pointTransactions[0]
+    if (!transaction) throw new Error('missing transaction')
+    transaction.description = '完成背单词'
+    const raw = backupOf(state)
+
+    expect(raw.charCodeAt(0)).toBe(0xfeff)
+    expect(raw.slice(1).startsWith('{')).toBe(true)
+    expect(raw).toContain('完成背单词')
+    expect(raw).not.toContain('\\u5b8c\\u6210')
+    expect(parseBackup(raw)).toEqual(state)
+    expect(parseBackup(raw.slice(1))).toEqual(state)
+  })
+
   it('keeps empty collections as empty lists', () => {
     const raw = backupOf(emptyState())
-    const document = JSON.parse(raw) as { state: AppState }
+    const document = parseDocument(raw) as { state: AppState }
 
     expect(document.state).toEqual(emptyState())
     expect(parseBackup(raw)).toEqual(emptyState())
@@ -178,19 +198,19 @@ describe('backup document', () => {
     expectRejected('{', SHAPE_MESSAGE)
     expectRejected(JSON.stringify(emptyState()), SHAPE_MESSAGE)
 
-    const wrongVersion = JSON.parse(backupOf(filledState())) as { schemaVersion: number }
+    const wrongVersion = parseDocument(backupOf(filledState())) as { schemaVersion: number }
     wrongVersion.schemaVersion = 2
     expectRejected(JSON.stringify(wrongVersion), VERSION_MESSAGE)
 
-    const missingCollection = JSON.parse(backupOf(filledState())) as { state: Partial<AppState> }
+    const missingCollection = parseDocument(backupOf(filledState())) as { state: Partial<AppState> }
     delete missingCollection.state.settlements
     expectRejected(JSON.stringify(missingCollection), SHAPE_MESSAGE)
 
-    const notArray = JSON.parse(backupOf(filledState())) as { state: { tasks: unknown } }
+    const notArray = parseDocument(backupOf(filledState())) as { state: { tasks: unknown } }
     notArray.state.tasks = {}
     expectRejected(JSON.stringify(notArray), SHAPE_MESSAGE)
 
-    const missingField = JSON.parse(backupOf(filledState())) as {
+    const missingField = parseDocument(backupOf(filledState())) as {
       state: { tasks: Array<Partial<AppState['tasks'][number]>> }
     }
     delete missingField.state.tasks[0]?.name
