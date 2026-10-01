@@ -37,7 +37,7 @@ export function MePage() {
 
   function exportBackup() {
     const raw = serializeBackup(createBackup(app.state, app.clock.nowIso()))
-    const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }))
+    const url = URL.createObjectURL(new Blob([raw], { type: 'application/json;charset=utf-8' }))
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = backupFilename(app.clock.today())

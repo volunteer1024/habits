@@ -57,14 +57,17 @@ export function createBackup(state: AppState, exportedAt: string): BackupFile {
   }
 }
 
+const UTF8_BOM = '\uFEFF'
+
 export function serializeBackup(backup: BackupFile): string {
-  return JSON.stringify(backup, null, 2)
+  return `${UTF8_BOM}${JSON.stringify(backup, null, 2)}`
 }
 
 export function parseBackup(raw: string): AppState {
+  const text = raw.charCodeAt(0) === UTF8_BOM.charCodeAt(0) ? raw.slice(1) : raw
   let parsed: unknown
   try {
-    parsed = JSON.parse(raw)
+    parsed = JSON.parse(text)
   } catch {
     throw new AppError('INVALID_BACKUP', SHAPE_MESSAGE)
   }
