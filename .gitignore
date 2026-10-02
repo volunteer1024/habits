@@ -9,6 +9,12 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Snapshots written by sync-server on the cloud machine
+sync-server/data/*.json
+sync-server/data/*.jsonl
+sync-server/server.log
+sync-server/server.pid
 dist-ssr
 *.local
 

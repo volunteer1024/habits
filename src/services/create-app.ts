@@ -1,10 +1,11 @@
-import { applySeed } from '@/data/seed'
 import type { StorageAdapter } from '@/data/adapter'
 import {
   LocalHabitRepository,
   LocalRewardRepository,
   LocalTaskRepository,
 } from '@/data/repositories'
+import { applySeed } from '@/data/seed'
+import { localStorageSyncSettings, type SyncSettingsStore } from '@/data/sync-settings'
 import { AppStore } from '@/data/store'
 import type { Clock } from '@/domain/clock'
 import {
@@ -15,6 +16,7 @@ import {
   StatsService,
   TaskService,
 } from './domain-services'
+import { createDailySync, fetchSyncPoster, type DailySync, type SyncPoster } from './sync'
 
 export interface AppRuntime {
   store: AppStore
@@ -25,10 +27,21 @@ export interface AppRuntime {
   rewards: RewardService
   stats: StatsService
   settlement: MonthlySettlementService
+  sync: DailySync
   bootstrap(): Promise<void>
 }
 
-export function createApp(adapter: StorageAdapter, clock: Clock): AppRuntime {
+export interface CreateAppOptions {
+  syncSettings?: SyncSettingsStore
+  syncPoster?: SyncPoster
+  defaultSyncBaseUrl?: string
+}
+
+export function createApp(
+  adapter: StorageAdapter,
+  clock: Clock,
+  options: CreateAppOptions = {},
+): AppRuntime {
   const store = new AppStore(adapter)
   const taskRepo = new LocalTaskRepository(store)
   const habitRepo = new LocalHabitRepository(store)
@@ -39,6 +52,13 @@ export function createApp(adapter: StorageAdapter, clock: Clock): AppRuntime {
   const rewards = new RewardService(store, clock, rewardRepo, points)
   const stats = new StatsService(store, clock)
   const settlement = new MonthlySettlementService(store, clock)
+  const sync = createDailySync({
+    getState: () => store.getSnapshot(),
+    clock,
+    settings: options.syncSettings ?? localStorageSyncSettings(),
+    post: options.syncPoster ?? fetchSyncPoster(),
+    defaultBaseUrl: options.defaultSyncBaseUrl ?? import.meta.env.VITE_SYNC_BASE_URL ?? '',
+  })
   let bootPromise: Promise<void> | null = null
 
   return {
@@ -50,6 +70,7 @@ export function createApp(adapter: StorageAdapter, clock: Clock): AppRuntime {
     rewards,
     stats,
     settlement,
+    sync,
     async bootstrap() {
       if (bootPromise) {
         await bootPromise

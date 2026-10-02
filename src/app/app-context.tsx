@@ -5,8 +5,17 @@ import { createApp, type AppRuntime } from '@/services/create-app'
 
 export const AppContext = createContext<AppRuntime | null>(null)
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const runtime = useMemo(() => createApp(new LocalStorageAdapter(), systemClock()), [])
+export function AppProvider({
+  children,
+  runtime: injected,
+}: {
+  children: ReactNode
+  runtime?: AppRuntime
+}) {
+  const runtime = useMemo(
+    () => injected ?? createApp(new LocalStorageAdapter(), systemClock()),
+    [injected],
+  )
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,6 +27,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setError(cause instanceof Error ? cause.message : '加载失败')
       })
   }, [runtime])
+
+  useEffect(() => {
+    if (!ready) return
+    void runtime.sync.auto()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void runtime.sync.auto()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [ready, runtime])
 
   if (error) {
     return (

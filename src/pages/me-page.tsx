@@ -1,9 +1,11 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -32,8 +34,23 @@ const links = [
 export function MePage() {
   const navigate = useNavigate()
   const app = useApp()
+  const sync = app.sync
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState<AppState | null>(null)
+  const [syncUrl, setSyncUrl] = useState('')
+  const [syncUrlReady, setSyncUrlReady] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void sync.savedBaseUrl().then((url) => {
+      if (!active) return
+      setSyncUrl(url)
+      setSyncUrlReady(true)
+    })
+    return () => {
+      active = false
+    }
+  }, [sync])
 
   function exportBackup() {
     const raw = serializeBackup(createBackup(app.state, app.clock.nowIso()))
@@ -70,6 +87,18 @@ export function MePage() {
     toast.success('已恢复备份')
   }
 
+  async function saveSyncUrl() {
+    await sync.saveBaseUrl(syncUrl)
+    setSyncUrl(syncUrl.trim())
+    toast.success(syncUrl.trim() ? '已保存同步地址' : '已清空同步地址')
+  }
+
+  async function clearSyncUrl() {
+    setSyncUrl('')
+    await sync.saveBaseUrl('')
+    toast.success('已清空同步地址')
+  }
+
   return (
     <div>
       <PageHeader title="我的" />
@@ -90,6 +119,36 @@ export function MePage() {
         <MenuButton label="导入" onClick={() => fileInputRef.current?.click()} />
         <MenuButton label="导出" onClick={exportBackup} />
         <MenuButton label={links[2].label} onClick={() => navigate(links[2].to)} />
+      </section>
+
+      <section className="mt-6 rounded-2xl border bg-card p-4">
+        <h2 className="text-sm font-medium">每日同步</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          每个自然日最多成功备份一次到云电脑。留空则使用构建时的默认地址。断网时仍可在本机打卡。
+        </p>
+        <div className="mt-4 grid gap-2">
+          <Label htmlFor="sync-base-url">同步地址</Label>
+          <Input
+            id="sync-base-url"
+            value={syncUrl}
+            disabled={!syncUrlReady}
+            spellCheck={false}
+            autoCapitalize="off"
+            placeholder="https://xxxx.trycloudflare.com"
+            onChange={(event) => setSyncUrl(event.target.value)}
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" onClick={() => void saveSyncUrl()} disabled={!syncUrlReady}>
+            保存地址
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void clearSyncUrl()} disabled={!syncUrlReady}>
+            清空
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void sync.manual()} disabled={!syncUrlReady}>
+            立即同步
+          </Button>
+        </div>
       </section>
 
       <input
