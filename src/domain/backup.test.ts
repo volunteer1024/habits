@@ -28,6 +28,7 @@ function filledState(): AppState {
           count: 4,
         },
         recordOffsetDays: 0,
+        autoDailyCredit: false,
         status: 'active',
         createdAt: '2026-09-01T00:00:00.000Z',
         updatedAt: '2026-09-02T00:00:00.000Z',
@@ -218,5 +219,30 @@ describe('backup document', () => {
 
     expect(await adapter.load()).toEqual(before)
     expect(app.store.getSnapshot()).toEqual(before)
+  })
+
+  it('round-trips automatic daily credit and still imports an older task without it', () => {
+    const state = filledState()
+    const task = state.tasks[0]
+    if (!task) throw new Error('missing task')
+    task.autoDailyCredit = true
+    const raw = backupOf(state)
+    const document = parseDocument(raw) as {
+      clientId?: string
+      state: { tasks: Array<{ autoDailyCredit?: unknown }> }
+    }
+
+    expect(document.clientId).toBeUndefined()
+    expect(raw).not.toContain('clientId')
+    expect(document.state.tasks[0]?.autoDailyCredit).toBe(true)
+    expect(parseBackup(raw)).toEqual(state)
+
+    delete document.state.tasks[0]?.autoDailyCredit
+    const older = JSON.stringify(document)
+    const imported = parseBackup(older)
+    expect(imported.tasks[0]?.autoDailyCredit).toBeUndefined()
+
+    document.state.tasks[0]!.autoDailyCredit = 'yes'
+    expectRejected(JSON.stringify(document), SHAPE_MESSAGE)
   })
 })

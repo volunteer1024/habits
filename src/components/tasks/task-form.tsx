@@ -36,6 +36,7 @@ export function TaskForm({
   const [endType, setEndType] = useState(task?.schedule.endType ?? 'never')
   const [count, setCount] = useState(String(task?.schedule.count ?? 100))
   const [offset, setOffset] = useState(task?.recordOffsetDays === -1)
+  const [autoDaily, setAutoDaily] = useState(task?.autoDailyCredit === true)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
@@ -52,6 +53,7 @@ export function TaskForm({
         endType,
         count: endType === 'count' ? Number(count) : undefined,
         recordOffsetDays: offset ? -1 : 0,
+        autoDailyCredit: autoDaily,
       })
     } finally {
       setSaving(false)
@@ -149,6 +151,20 @@ export function TaskForm({
           />
         ) : null}
       </fieldset>
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          checked={autoDaily}
+          onCheckedChange={(checked) => setAutoDaily(checked === true)}
+          className="mt-0.5"
+          aria-label="每天自动激励"
+        />
+        <span>
+          每天自动激励
+          <span className="mt-1 block text-xs text-muted-foreground">
+            打开应用时，若今天还没打卡，自动记一次完成
+          </span>
+        </span>
+      </label>
       <label className="flex items-center gap-2 text-sm">
         <Checkbox checked={offset} onCheckedChange={(checked) => setOffset(Boolean(checked))} />
         记作昨晚的行为（如早睡）
