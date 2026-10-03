@@ -28,6 +28,7 @@ export interface Task {
   schedule: ScheduleRule
   recordOffsetDays: number
   status: TaskStatus
+  autoDailyCredit?: boolean
   createdAt: string
   updatedAt: string
   archivedOn?: string

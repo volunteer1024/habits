@@ -53,7 +53,13 @@ export function createBackup(state: AppState, exportedAt: string): BackupFile {
   return {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt,
-    state,
+    state: {
+      ...state,
+      tasks: state.tasks.map((task) => ({
+        ...task,
+        autoDailyCredit: task.autoDailyCredit === true,
+      })),
+    },
   }
 }
 
@@ -123,6 +129,9 @@ function requireTask(record: Record<string, unknown>): void {
   requireNumber(record, 'monthlyPerfectBonus')
   requireSchedule(record.schedule)
   requireNumber(record, 'recordOffsetDays')
+  if (Object.prototype.hasOwnProperty.call(record, 'autoDailyCredit') && typeof record.autoDailyCredit !== 'boolean') {
+    failShape()
+  }
   requireOneOf(record.status, TASK_STATUSES)
   requireString(record, 'createdAt')
   requireString(record, 'updatedAt')

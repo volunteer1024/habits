@@ -669,6 +669,124 @@ describe('app services', () => {
   })
 })
 
+function completionCredits(app: ReturnType<typeof createApp>, name: string, date?: string) {
+  const task = taskByName(app, name)
+  return app.store.getSnapshot().pointTransactions.filter((item) => {
+    if (item.type !== 'task_complete' || item.sourceId === 'seed') return false
+    const instance = app.store.getSnapshot().taskInstances.find((row) => row.id === item.sourceId)
+    if (!instance || instance.taskId !== task.id) return false
+    return date ? item.businessDate === date : true
+  })
+}
+
+describe('automatic daily credit', () => {
+  it('records one credit on open and does not record it again the same day', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const first = createApp(adapter, fixedClock('2026-08-21'))
+    await first.bootstrap()
+    const medicine = taskByName(first, '喝药')
+    await first.tasks.update(medicine.id, { autoDailyCredit: true })
+    await first.tasks.getTodayItems()
+    expect(first.points.balance()).toBe(0)
+
+    await first.tasks.applyAutomaticCredits()
+    const credited = completionCredits(first, '喝药', '2026-08-21')
+    expect(credited).toHaveLength(1)
+    expect(credited[0]).toMatchObject({
+      type: 'task_complete',
+      delta: 1,
+      description: '喝药',
+      businessDate: '2026-08-21',
+    })
+    const today = await first.tasks.getTodayItems()
+    expect(today.find((item) => item.task.id === medicine.id)?.instance.status).toBe('completed')
+    expect(today.find((item) => item.task.id === medicine.id)?.instance.lockedPoints).toBe(1)
+
+    await first.tasks.complete(medicine.id)
+    expect(completionCredits(first, '喝药', '2026-08-21')).toHaveLength(1)
+    expect(first.points.balance()).toBe(1)
+
+    const second = createApp(adapter, fixedClock('2026-08-21'))
+    await second.bootstrap()
+    expect(completionCredits(second, '喝药', '2026-08-21')).toHaveLength(1)
+    expect(second.points.balance()).toBe(1)
+  })
+
+  it('does not award again when today was already checked in by hand', async () => {
+    const { app } = await setup()
+    const medicine = taskByName(app, '喝药')
+    await app.tasks.complete(medicine.id)
+    await app.tasks.update(medicine.id, { autoDailyCredit: true })
+    await app.tasks.applyAutomaticCredits()
+    expect(completionCredits(app, '喝药', '2026-08-21')).toHaveLength(1)
+    expect(app.points.balance()).toBe(1)
+  })
+
+  it('skips tasks that are off, archived, or not scheduled, and does not backfill', async () => {
+    const adapter = new MemoryStorageAdapter()
+    const friday = createApp(adapter, fixedClock('2026-08-21'))
+    await friday.bootstrap()
+    await friday.tasks.create({
+      name: '周会',
+      points: 4,
+      startDate: '2026-08-21',
+      frequency: 'weekly',
+      weekdays: [1],
+      endType: 'never',
+      autoDailyCredit: true,
+    })
+    const medicine = taskByName(friday, '喝药')
+    await friday.tasks.update(medicine.id, { autoDailyCredit: true })
+    await friday.tasks.applyAutomaticCredits()
+    expect(completionCredits(friday, '喝药', '2026-08-21')).toHaveLength(1)
+    expect(completionCredits(friday, '周会')).toHaveLength(0)
+    expect(friday.points.balance()).toBe(1)
+
+    await friday.tasks.archive(medicine.id)
+    const saturday = createApp(adapter, fixedClock('2026-08-22'))
+    await saturday.bootstrap()
+    expect(completionCredits(saturday, '喝药', '2026-08-22')).toHaveLength(0)
+    expect(completionCredits(saturday, '喝药', '2026-08-21')).toHaveLength(1)
+
+    const vocab = taskByName(saturday, '背单词')
+    await saturday.tasks.update(vocab.id, { autoDailyCredit: true })
+    await saturday.tasks.applyAutomaticCredits()
+    expect(completionCredits(saturday, '背单词', '2026-08-22')).toHaveLength(1)
+
+    const monday = createApp(adapter, fixedClock('2026-08-24'))
+    await monday.bootstrap()
+    expect(completionCredits(monday, '背单词', '2026-08-23')).toHaveLength(0)
+    expect(completionCredits(monday, '背单词', '2026-08-24')).toHaveLength(1)
+    expect(completionCredits(monday, '周会', '2026-08-24')).toHaveLength(1)
+    expect(monday.points.balance()).toBe(15)
+
+    await monday.tasks.update(taskByName(monday, '背单词').id, { autoDailyCredit: false })
+    const tuesday = createApp(adapter, fixedClock('2026-08-25'))
+    await tuesday.bootstrap()
+    expect(completionCredits(tuesday, '背单词', '2026-08-25')).toHaveLength(0)
+    expect(completionCredits(tuesday, '背单词', '2026-08-22')).toHaveLength(1)
+    expect(completionCredits(tuesday, '背单词', '2026-08-24')).toHaveLength(1)
+    expect(tuesday.points.balance()).toBe(15)
+  })
+
+  it('keeps stored data and still accepts a manual check-in when the pass fails', async () => {
+    const { app } = await setup()
+    const medicine = taskByName(app, '喝药')
+    await app.tasks.update(medicine.id, { autoDailyCredit: true })
+    const before = structuredClone(app.store.getSnapshot())
+    const update = app.store.update.bind(app.store)
+    app.store.update = async () => {
+      throw new Error('disk')
+    }
+    await expect(app.tasks.applyAutomaticCredits()).resolves.toBeUndefined()
+    app.store.update = update
+    expect(app.store.getSnapshot()).toEqual(before)
+    await app.tasks.complete(medicine.id)
+    expect(completionCredits(app, '喝药', '2026-08-21')).toHaveLength(1)
+    expect(app.points.balance()).toBe(1)
+  })
+})
+
 describe('date helpers used by stats', () => {
   it('can walk a week from a Friday', () => {
     expect(addDays('2026-08-21', 1)).toBe('2026-08-22')

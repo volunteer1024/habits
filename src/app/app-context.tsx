@@ -30,9 +30,12 @@ export function AppProvider({
 
   useEffect(() => {
     if (!ready) return
+    void runtime.tasks.applyAutomaticCredits()
     void runtime.sync.auto()
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') void runtime.sync.auto()
+      if (document.visibilityState !== 'visible') return
+      void runtime.tasks.applyAutomaticCredits()
+      void runtime.sync.auto()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)

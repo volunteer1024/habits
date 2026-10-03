@@ -99,6 +99,29 @@ describe('daily sync', () => {
     expect(toast).toHaveBeenCalledWith('今日已同步')
   })
 
+  it('sends autoDailyCredit in the sync body and leaves clientId out of the export file', async () => {
+    const { calls, post } = recordingPoster(() => ({ ok: true }))
+    const { app, settings } = await setup({
+      defaultSyncBaseUrl: 'https://cloud.example',
+      post,
+    })
+    await app.tasks.update(app.store.getSnapshot().tasks.find((item) => item.name === '喝药')!.id, {
+      autoDailyCredit: true,
+    })
+
+    expect(await app.sync.auto()).toBe('ok')
+    const body = JSON.parse(calls[0]?.body ?? '{}') as { state: AppState }
+    expect(body.state.tasks.find((item) => item.name === '喝药')?.autoDailyCredit).toBe(true)
+    expect(body.state.tasks.find((item) => item.name === '背单词')?.autoDailyCredit).toBe(false)
+
+    const file = serializeBackup(createBackup(app.store.getSnapshot(), app.clock.nowIso()))
+    expect(file).not.toContain('clientId')
+    expect(file).not.toContain((await settings.load()).clientId)
+    const document = JSON.parse(file.slice(1)) as { clientId?: string; state: AppState }
+    expect(document.clientId).toBeUndefined()
+    expect(document.state.tasks.find((item) => item.name === '喝药')?.autoDailyCredit).toBe(true)
+  })
+
   it('keeps local data when the request fails, then records today after a later success', async () => {
     let ok = false
     const { calls, post } = recordingPoster(() => {

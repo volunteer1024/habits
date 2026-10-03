@@ -84,6 +84,7 @@ export function createApp(
           })
         }
         await settlement.settlePastMonths()
+        await tasks.applyAutomaticCredits()
       })()
       try {
         await bootPromise

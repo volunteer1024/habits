@@ -38,6 +38,7 @@ export interface CreateTaskInput {
   endType: EndType
   count?: number
   recordOffsetDays?: number
+  autoDailyCredit?: boolean
 }
 
 export interface UpdateTaskInput {
@@ -51,6 +52,7 @@ export interface UpdateTaskInput {
   endType?: EndType
   count?: number
   recordOffsetDays?: number
+  autoDailyCredit?: boolean
 }
 
 export interface TodayItem {
@@ -130,10 +132,40 @@ function ensureInstance(state: { taskInstances: TaskInstance[] }, task: Task, da
   return created
 }
 
+function needsAutomaticCredit(state: { taskInstances: TaskInstance[] }, task: Task, todayDate: string): boolean {
+  if (task.status !== 'active' || task.autoDailyCredit !== true) return false
+  if (!isScheduledOn(task, todayDate)) return false
+  return instanceOnDate(state, task.id, todayDate)?.status !== 'completed'
+}
+
+function completeTaskOnDate(state: AppState, task: Task, date: string, todayDate: string, nowIso: string): void {
+  if (!isScheduledOn(task, date)) {
+    throw new AppError('NOT_SCHEDULED', '这一天没有这个任务')
+  }
+  const instance = ensureInstance(state, task, date)
+  if (instance.status === 'completed') return
+  const points = instance.lockedPoints ?? task.points
+  instance.lockedPoints = points
+  instance.status = 'completed'
+  instance.completedAt = nowIso
+  instance.taskNameSnapshot = displayTaskName(task)
+  state.pointTransactions.push({
+    id: createId(),
+    type: 'task_complete',
+    delta: points,
+    sourceId: instance.id,
+    description: instance.taskNameSnapshot,
+    businessDate: date,
+    createdAt: nowIso,
+  })
+  reconcileSettledMonth(state, date, todayDate, nowIso)
+}
+
 export class TaskService {
   private store: AppStore
   private clock: Clock
   private tasks: TaskRepository
+  private autoCreditFlight: Promise<void> | null = null
 
   constructor(store: AppStore, clock: Clock, tasks: TaskRepository) {
     this.store = store
@@ -193,27 +225,38 @@ export class TaskService {
     requireWritableDate(this.clock.today(), date)
     await this.store.update((state) => {
       const task = requireTask(state, taskId)
-      if (!isScheduledOn(task, date)) {
-        throw new AppError('NOT_SCHEDULED', '这一天没有这个任务')
-      }
-      const instance = ensureInstance(state, task, date)
-      if (instance.status === 'completed') return
-      const points = instance.lockedPoints ?? task.points
-      instance.lockedPoints = points
-      instance.status = 'completed'
-      instance.completedAt = this.clock.nowIso()
-      instance.taskNameSnapshot = displayTaskName(task)
-      state.pointTransactions.push({
-        id: createId(),
-        type: 'task_complete',
-        delta: points,
-        sourceId: instance.id,
-        description: instance.taskNameSnapshot,
-        businessDate: date,
-        createdAt: this.clock.nowIso(),
-      })
-      reconcileSettledMonth(state, date, this.clock.today(), this.clock.nowIso())
+      completeTaskOnDate(state, task, date, this.clock.today(), this.clock.nowIso())
     })
+  }
+
+  applyAutomaticCredits(): Promise<void> {
+    if (this.autoCreditFlight) return this.autoCreditFlight
+    const run = this.runAutomaticCredits().finally(() => {
+      if (this.autoCreditFlight === run) this.autoCreditFlight = null
+    })
+    this.autoCreditFlight = run
+    return run
+  }
+
+  private async runAutomaticCredits(): Promise<void> {
+    try {
+      const todayDate = this.clock.today()
+      const snapshot = this.store.getSnapshot()
+      if (!snapshot.tasks.some((task) => needsAutomaticCredit(snapshot, task, todayDate))) return
+      const nowIso = this.clock.nowIso()
+      await this.store.update((state) => {
+        for (const task of state.tasks) {
+          if (!needsAutomaticCredit(state, task, todayDate)) continue
+          try {
+            completeTaskOnDate(state, task, todayDate, todayDate, nowIso)
+          } catch {
+            // One task must not drop the credits already applied for the others.
+          }
+        }
+      })
+    } catch {
+      // A failed pass must not reject bootstrap or block a later manual check-in.
+    }
   }
 
   async undo(taskId: string, date = this.clock.today()): Promise<void> {
@@ -259,6 +302,7 @@ export class TaskService {
       points: input.points,
       monthlyPerfectBonus: input.monthlyPerfectBonus ?? 0,
       recordOffsetDays: input.recordOffsetDays ?? 0,
+      autoDailyCredit: input.autoDailyCredit === true,
       status: 'active',
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -300,6 +344,8 @@ export class TaskService {
       points,
       monthlyPerfectBonus,
       recordOffsetDays: patch.recordOffsetDays ?? current.recordOffsetDays,
+      autoDailyCredit:
+        patch.autoDailyCredit === undefined ? current.autoDailyCredit === true : patch.autoDailyCredit === true,
       updatedAt: timestamp,
       schedule: {
         frequency,
