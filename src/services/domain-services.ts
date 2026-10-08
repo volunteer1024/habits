@@ -606,7 +606,6 @@ export interface PeriodStats {
   end: string
   scheduled: number
   completed: number
-  rate: number
   tasks: TaskPeriodStat[]
 }
 
@@ -689,7 +688,6 @@ export class StatsService {
       end,
       scheduled,
       completed,
-      rate: scheduled === 0 ? 0 : Math.round((completed / scheduled) * 100),
       tasks: rows,
     }
   }
