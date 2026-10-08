@@ -22,16 +22,6 @@ function CalendarCell({ day }: { day: CalendarDay }) {
   const showPoints = day.inMonth && day.points !== 0
   return (
     <div className="flex flex-col items-center gap-0.5 py-0.5">
-      <span
-        className={cn(
-          'h-3 whitespace-nowrap text-[11px] leading-3 tabular-nums',
-          showPoints && day.points > 0 && 'text-complete',
-          showPoints && day.points < 0 && 'text-loss',
-          !showPoints && 'invisible',
-        )}
-      >
-        {showPoints ? formatDelta(day.points) : '0'}
-      </span>
       <div
         className={cn(
           'flex size-8 items-center justify-center rounded-full text-sm tabular-nums',
@@ -42,6 +32,16 @@ function CalendarCell({ day }: { day: CalendarDay }) {
       >
         {Number(day.date.slice(8, 10))}
       </div>
+      <span
+        className={cn(
+          'h-3 whitespace-nowrap text-[11px] leading-3 tabular-nums',
+          showPoints && day.points > 0 && 'text-complete',
+          showPoints && day.points < 0 && 'text-loss',
+          !showPoints && 'invisible',
+        )}
+      >
+        {showPoints ? formatDelta(day.points) : '0'}
+      </span>
     </div>
   )
 }
@@ -67,7 +67,56 @@ export function StatsPage() {
     <div>
       <PageHeader title="统计" description="只看完成，不强调未完成" />
 
-      <div className="mb-6 grid grid-cols-2 rounded-full bg-muted p-1">
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setCalendarMonth(previousYearMonth(calendarMonth))}
+            >
+              <ChevronLeft />
+            </Button>
+            <h2 className="min-w-16 text-center text-sm font-medium">{monthLabel}</h2>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={!canGoNext}
+              onClick={() =>
+                setCalendarMonth(yearMonth(addDays(monthRange(calendarMonth).end, 1)))
+              }
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="全部任务" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部任务</SelectItem>
+              {activeTasks.map((task) => (
+                <SelectItem key={task.id} value={task.id}>
+                  {task.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {WEEKDAYS.map((label) => (
+            <div key={label} className="py-1 text-xs text-muted-foreground">
+              {label}
+            </div>
+          ))}
+          {days.map((day) => (
+            <CalendarCell key={day.date} day={day} />
+          ))}
+        </div>
+      </section>
+
+      <div className="mt-8 mb-6 grid grid-cols-2 rounded-full bg-muted p-1">
         <button
           type="button"
           onClick={() => setPeriod('week')}
@@ -119,55 +168,6 @@ export function StatsPage() {
           </div>
         </section>
       ) : null}
-
-      <section className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setCalendarMonth(previousYearMonth(calendarMonth))}
-            >
-              <ChevronLeft />
-            </Button>
-            <h2 className="min-w-16 text-center text-sm font-medium">{monthLabel}</h2>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={!canGoNext}
-              onClick={() =>
-                setCalendarMonth(yearMonth(addDays(monthRange(calendarMonth).end, 1)))
-              }
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="全部任务" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部任务</SelectItem>
-              {activeTasks.map((task) => (
-                <SelectItem key={task.id} value={task.id}>
-                  {task.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {WEEKDAYS.map((label) => (
-            <div key={label} className="py-1 text-xs text-muted-foreground">
-              {label}
-            </div>
-          ))}
-          {days.map((day) => (
-            <CalendarCell key={day.date} day={day} />
-          ))}
-        </div>
-      </section>
     </div>
   )
 }
