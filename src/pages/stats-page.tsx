@@ -12,7 +12,7 @@ import {
 import { useApp } from '@/hooks/use-app'
 import { formatChineseMonth, previousYearMonth, yearMonth } from '@/domain/dates'
 import { addDays, monthRange } from '@/domain/dates'
-import { formatDelta, formatRate } from '@/lib/format'
+import { formatDelta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { CalendarDay } from '@/services/domain-services'
 
@@ -22,16 +22,6 @@ function CalendarCell({ day }: { day: CalendarDay }) {
   const showPoints = day.inMonth && day.points !== 0
   return (
     <div className="flex flex-col items-center gap-0.5 py-0.5">
-      <div
-        className={cn(
-          'flex size-8 items-center justify-center rounded-full text-sm tabular-nums',
-          !day.inMonth && 'text-muted-foreground/30',
-          day.inMonth && day.marked && 'bg-complete text-complete-foreground',
-          day.inMonth && !day.marked && 'text-foreground',
-        )}
-      >
-        {Number(day.date.slice(8, 10))}
-      </div>
       <span
         className={cn(
           'h-3 whitespace-nowrap text-[11px] leading-3 tabular-nums',
@@ -42,6 +32,16 @@ function CalendarCell({ day }: { day: CalendarDay }) {
       >
         {showPoints ? formatDelta(day.points) : '0'}
       </span>
+      <div
+        className={cn(
+          'flex size-8 items-center justify-center rounded-full text-sm tabular-nums',
+          !day.inMonth && 'text-muted-foreground/30',
+          day.inMonth && day.marked && 'bg-complete text-complete-foreground',
+          day.inMonth && !day.marked && 'text-foreground',
+        )}
+      >
+        {Number(day.date.slice(8, 10))}
+      </div>
     </div>
   )
 }
@@ -90,17 +90,7 @@ export function StatsPage() {
         </button>
       </div>
 
-      <section className="rounded-2xl border bg-card px-5 py-6">
-        <p className="text-sm text-muted-foreground">完成率</p>
-        <p className="mt-1 font-heading text-4xl font-semibold tracking-tight">
-          {formatRate(stats.completed, stats.scheduled)}
-        </p>
-        <p className="mt-1 tabular-nums text-sm text-muted-foreground">
-          {stats.completed} / {stats.scheduled}
-        </p>
-      </section>
-
-      <section className="mt-4 space-y-2">
+      <section className="space-y-2">
         {stats.tasks.map((task) => (
           <div key={task.taskId} className="flex items-center justify-between rounded-2xl border bg-card px-4 py-3">
             <span className="text-sm font-medium">{task.name}</span>
